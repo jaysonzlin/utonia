@@ -67,6 +67,24 @@ This repo provide two ways of installation: **standalone mode** and **package mo
   python demo/7_pca_outdoor.py
   ```
 
+  **Joint trajectory training data.** To visualize the initial clouds used by
+  `train_joint_wan_physctrl_trajectory.py`, export a PCA-colored PLY for every
+  object in one training sample:
+  ```bash
+  export PYTHONPATH=./
+  python demo/9_pca_joint_trajectory.py \
+    --dataset-root /path/to/td_832x480_3_soft \
+    --sample-id YOUR_SAMPLE_ID \
+    --start-frame 13 \
+    --output-dir outputs/joint_trajectory_pca
+  ```
+  This CUDA-only command uses `point_cloud[start_frame - 1, 0]`, matching the
+  trajectory trainer's conditioning cloud. It writes one standard PLY per
+  object and opens no viewer. Each PLY retains the original training
+  coordinates and receives independently-derived Utonia PCA RGB colors. Use
+  `--checkpoint /path/to/utonia.pth` to load local weights; otherwise it loads
+  the official `Pointcept/Utonia` weights.
+
   <div align='left'>
   <img src="https://raw.githubusercontent.com/pointcept/assets/main/utonia/demo.png" alt="teaser" width="800" />
   </div>

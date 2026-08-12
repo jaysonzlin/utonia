@@ -23,6 +23,7 @@ dependencies:
   - timm
   - psutil
   - huggingface_hub
+  - h5py
   - open3d  # for demo visualization
   - matplotlib  # for demo visualization
   - pip:
