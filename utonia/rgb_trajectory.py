@@ -111,3 +111,92 @@ def export_rgb_ply_sequence(
         _write_rgb_ply(path, coords, rgb)
         paths.append(path)
     return paths
+
+
+def trajectory_bounds(trajectory: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Return padded world-space bounds covering every frame of a trajectory."""
+    trajectory = np.asarray(trajectory, dtype=np.float32)
+    if trajectory.ndim != 3 or trajectory.shape[-1] != 3:
+        raise ValueError("trajectory must have shape [T, N, 3]")
+    if trajectory.shape[0] == 0 or trajectory.shape[1] == 0:
+        raise ValueError("trajectory must contain at least one frame and one point")
+    if not np.isfinite(trajectory).all():
+        raise ValueError("trajectory coordinates must be finite")
+    lower = np.min(trajectory, axis=(0, 1))
+    upper = np.max(trajectory, axis=(0, 1))
+    padding = np.maximum((upper - lower) * 0.05, 1e-6)
+    return lower - padding, upper + padding
+
+
+def export_rgb_trajectory_mp4(
+    output_dir: Path | str,
+    sample_id: str,
+    object_id: str,
+    trajectory: np.ndarray,
+    rgb: np.ndarray,
+    fps: int,
+) -> Path:
+    """Render a fixed-camera RGB trajectory preview as an MP4 file."""
+    _require_basename(sample_id, "sample_id")
+    _require_basename(object_id, "object_id")
+    if fps < 1:
+        raise ValueError("fps must be a positive integer")
+    trajectory, rgb = _validate_trajectory_and_rgb(trajectory, rgb)
+    lower, upper = trajectory_bounds(trajectory)
+
+    try:
+        import cv2
+        import matplotlib
+
+        matplotlib.use("Agg", force=True)
+        import matplotlib.pyplot as plt
+    except ImportError as error:
+        raise RuntimeError(
+            "MP4 trajectory rendering requires matplotlib and opencv-python"
+        ) from error
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    path = output_dir / f"{sample_id}_object_{object_id}_trajectory.mp4"
+    figure = plt.figure(figsize=(6.4, 6.4), dpi=100, facecolor="white")
+    axes = figure.add_subplot(111, projection="3d")
+    writer = None
+    try:
+        for frame_index, coords in enumerate(trajectory):
+            axes.clear()
+            axes.scatter(
+                coords[:, 0],
+                coords[:, 1],
+                coords[:, 2],
+                c=rgb,
+                s=5,
+                depthshade=False,
+                linewidths=0,
+            )
+            axes.set_xlim(lower[0], upper[0])
+            axes.set_ylim(lower[1], upper[1])
+            axes.set_zlim(lower[2], upper[2])
+            axes.set_box_aspect(tuple(upper - lower))
+            axes.set_xlabel("x")
+            axes.set_ylabel("y")
+            axes.set_zlabel("z")
+            axes.set_title(
+                f"{sample_id} · object {object_id} · frame {frame_index}", pad=18
+            )
+            axes.view_init(elev=20, azim=-55)
+            figure.canvas.draw()
+            frame_rgba = np.asarray(figure.canvas.buffer_rgba())
+            frame_bgr = cv2.cvtColor(frame_rgba, cv2.COLOR_RGBA2BGR)
+            if writer is None:
+                height, width = frame_bgr.shape[:2]
+                writer = cv2.VideoWriter(
+                    str(path), cv2.VideoWriter_fourcc(*"mp4v"), fps, (width, height)
+                )
+                if not writer.isOpened():
+                    raise ValueError(f"unable to open MP4 writer: {path}")
+            writer.write(frame_bgr)
+    finally:
+        if writer is not None:
+            writer.release()
+        plt.close(figure)
+    return path

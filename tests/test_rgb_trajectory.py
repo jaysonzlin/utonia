@@ -71,6 +71,27 @@ class RgbTrajectoryTests(unittest.TestCase):
         self.assertEqual(lines[0], "ply")
         self.assertEqual(lines[10], "0.0 1.0 2.0 0 128 255")
 
+    def test_trajectory_bounds_cover_every_frame_with_nonzero_extent(self) -> None:
+        trajectory = np.array(
+            [[[0.0, 0.0, 0.0]], [[2.0, 4.0, 6.0]]], dtype=np.float32
+        )
+
+        lower, upper = rgb_trajectory.trajectory_bounds(trajectory)
+
+        self.assertTrue(np.all(lower < [0.0, 0.0, 0.0]))
+        self.assertTrue(np.all(upper > [2.0, 4.0, 6.0]))
+
+    def test_export_writes_a_nonempty_mp4(self) -> None:
+        trajectory = np.stack([frame_points(0), frame_points(1)])
+        rgb = np.array([[0.0, 0.5, 1.0], [1.0, 0.0, 0.0]], dtype=np.float32)
+
+        path = rgb_trajectory.export_rgb_trajectory_mp4(
+            self.root, "sample_0", "000", trajectory, rgb, fps=24
+        )
+
+        self.assertEqual(path.name, "sample_0_object_000_trajectory.mp4")
+        self.assertGreater(path.stat().st_size, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
