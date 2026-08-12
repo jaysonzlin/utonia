@@ -25,12 +25,22 @@ def frame_points(offset: int, frame: int) -> np.ndarray:
     )
 
 
-def write_cloud(root: Path, sample_id: str, object_id: str, frames: int, offset: int) -> None:
+def write_cloud(
+    root: Path,
+    sample_id: str,
+    object_id: str,
+    frames: int,
+    offset: int,
+    rgb: np.ndarray | None = None,
+) -> None:
     path = root / sample_id / "objects" / object_id / "pc.hdf5"
     path.parent.mkdir(parents=True)
     cloud = np.stack([frame_points(offset, frame) for frame in range(frames)])[:, None]
     with h5py.File(path, "w") as source:
         source.create_dataset("point_cloud", data=cloud)
+        source.create_dataset(
+            "rgb", data=np.zeros((2, 3), dtype=np.float32) if rgb is None else rgb
+        )
 
 
 def write_invalid_cloud(root: Path, sample_id: str, object_id: str, shape: tuple[int, ...]) -> None:
@@ -56,9 +66,37 @@ class LoadInitialPointCloudsTests(unittest.TestCase):
             self.root, "sample-a", start_frame=2
         )
 
-        self.assertEqual([name for name, _ in loaded], ["object-a", "object-b"])
+        self.assertEqual([name for name, *_ in loaded], ["object-a", "object-b"])
         np.testing.assert_array_equal(loaded[0][1], frame_points(0, 1))
         np.testing.assert_array_equal(loaded[1][1], frame_points(100, 1))
+
+    def test_loads_static_rgb_aligned_with_each_object_cloud(self) -> None:
+        rgb = np.array([[0.1, 0.2, 0.3], [0.4, 0.5, 0.6]], dtype=np.float32)
+        write_cloud(self.root, "sample-a", "object-a", frames=3, offset=0, rgb=rgb)
+
+        loaded = joint_trajectory_pca.load_initial_point_clouds(
+            self.root, "sample-a", start_frame=2
+        )
+
+        object_id, coords, loaded_rgb = loaded[0]
+        self.assertEqual(object_id, "object-a")
+        np.testing.assert_array_equal(coords, frame_points(0, 1))
+        np.testing.assert_array_equal(loaded_rgb, rgb)
+
+    def test_rejects_rgb_with_a_different_point_count(self) -> None:
+        write_cloud(
+            self.root,
+            "sample-a",
+            "object-a",
+            frames=2,
+            offset=0,
+            rgb=np.zeros((3, 3), dtype=np.float32),
+        )
+
+        with self.assertRaisesRegex(ValueError, "rgb must have shape"):
+            joint_trajectory_pca.load_initial_point_clouds(
+                self.root, "sample-a", start_frame=1
+            )
 
     def test_rejects_out_of_range_start_frame(self) -> None:
         write_cloud(self.root, "sample-a", "object-a", frames=2, offset=0)
@@ -132,6 +170,14 @@ class JointTrajectoryPcaHelperTests(unittest.TestCase):
         np.testing.assert_array_equal(point["coord"], coords)
         np.testing.assert_array_equal(point["color"], np.zeros_like(coords))
         np.testing.assert_array_equal(point["normal"], np.zeros_like(coords))
+
+    def test_build_object_input_preserves_rgb(self) -> None:
+        coords = np.arange(12, dtype=np.float32).reshape(4, 3)
+        rgb = np.full((4, 3), 0.25, dtype=np.float32)
+
+        point = joint_trajectory_pca.build_object_input(coords, rgb)
+
+        np.testing.assert_array_equal(point["color"], rgb)
 
     def test_pca_colors_returns_bounded_rgb_for_one_object(self) -> None:
         features = torch.arange(144, dtype=torch.float32).reshape(12, 12)

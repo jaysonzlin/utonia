@@ -46,10 +46,10 @@ def main(argv: list[str] | None = None) -> None:
     utonia.utils.set_seed(args.seed)
     model = load_utonia_model(args.checkpoint)
     transform = utonia.transform.default(scale=1.0, normalize_coord=True)
-    for object_id, coords in load_initial_point_clouds(
+    for object_id, coords, rgb in load_initial_point_clouds(
         args.dataset_root, args.sample_id, args.start_frame
     ):
-        point = transform(build_object_input(coords))
+        point = transform(build_object_input(coords, rgb))
         point = move_tensors_to_cuda(point)
         with torch.inference_mode():
             point = upcast_features(model(point))

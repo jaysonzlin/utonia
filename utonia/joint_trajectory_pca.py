@@ -9,7 +9,7 @@ import torch
 
 def load_initial_point_clouds(
     dataset_root: Path | str, sample_id: str, start_frame: int
-) -> list[tuple[str, np.ndarray]]:
+) -> list[tuple[str, np.ndarray, np.ndarray]]:
     """Load each object's training-condition cloud for a one-based frame."""
     if start_frame < 1:
         raise ValueError("start_frame must be one-based and at least 1")
@@ -55,20 +55,41 @@ def load_initial_point_clouds(
                     raise ValueError(
                         f"{path}: point_cloud must contain numeric coordinates"
                     ) from error
+                if "rgb" not in source:
+                    raise ValueError(f"{path}: missing rgb dataset")
+                rgb = source["rgb"]
+                if not isinstance(rgb, h5py.Dataset):
+                    raise ValueError(f"{path}: rgb must be an HDF5 dataset")
+                if rgb.shape != coords.shape:
+                    raise ValueError(
+                        f"{path}: rgb must have shape {coords.shape}; got {rgb.shape}"
+                    )
+                try:
+                    colors = np.asarray(rgb, dtype=np.float32)
+                except (TypeError, ValueError) as error:
+                    raise ValueError(f"{path}: rgb must contain numeric colors") from error
+                if not np.isfinite(colors).all() or np.any((colors < 0.0) | (colors > 1.0)):
+                    raise ValueError(f"{path}: rgb values must be finite and in [0, 1]")
         except OSError as error:
             raise ValueError(f"invalid HDF5 point cloud: {path}") from error
-        selected_clouds.append((object_dir.name, coords))
+        selected_clouds.append((object_dir.name, coords, colors))
     return selected_clouds
 
 
-def build_object_input(coords: np.ndarray) -> dict[str, np.ndarray]:
-    """Build Utonia's coordinate-only input with absent modalities zero-filled."""
+def build_object_input(coords: np.ndarray, rgb: np.ndarray | None = None) -> dict[str, np.ndarray]:
+    """Build Utonia's point input with static RGB and zero-filled normals."""
     coords = np.asarray(coords, dtype=np.float32)
     if coords.ndim != 2 or coords.shape[1] != 3:
         raise ValueError("coords must have shape [N, 3]")
+    if rgb is None:
+        rgb = np.zeros_like(coords)
+    else:
+        rgb = np.asarray(rgb, dtype=np.float32)
+        if rgb.shape != coords.shape:
+            raise ValueError("rgb must have shape [N, 3] matching coords")
     return {
         "coord": coords.copy(),
-        "color": np.zeros_like(coords),
+        "color": rgb.copy(),
         "normal": np.zeros_like(coords),
     }
 
