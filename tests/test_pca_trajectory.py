@@ -20,6 +20,10 @@ def load_module(name: str, path: Path):
     return module
 
 
+def load_demo_11():
+    return load_module("pca_trajectory_demo", ROOT / "demo" / "11_pca_trajectory.py")
+
+
 rgb_trajectory = load_module("rgb_trajectory", ROOT / "utonia" / "rgb_trajectory.py")
 joint_trajectory_pca = load_module(
     "joint_trajectory_pca", ROOT / "utonia" / "joint_trajectory_pca.py"
@@ -93,6 +97,44 @@ class PcaTrajectoryTests(unittest.TestCase):
         self.assertEqual(plys[0].name, "sample_0_object_000_frame_0000_pca.ply")
         self.assertEqual(mp4.name, "sample_0_object_000_pca_trajectory.mp4")
         self.assertGreater(mp4.stat().st_size, 0)
+
+    def test_demo_defaults_to_demo_9_model_selection_and_24_fps(self) -> None:
+        demo = load_demo_11()
+
+        args = demo.parse_args(
+            [
+                "--dataset-root",
+                "data/train",
+                "--sample-id",
+                "sample_0",
+                "--object-id",
+                "000",
+                "--output-dir",
+                "outputs/pca",
+            ]
+        )
+
+        self.assertEqual(args.fps, 24)
+        self.assertEqual(args.seed, 37)
+        self.assertIsNone(args.checkpoint)
+
+    @patch("torch.cuda.is_available", return_value=False)
+    def test_demo_rejects_non_cuda_host_before_importing_utonia(self, _available) -> None:
+        demo = load_demo_11()
+
+        with self.assertRaisesRegex(RuntimeError, "CUDA"):
+            demo.main(
+                [
+                    "--dataset-root",
+                    "data/train",
+                    "--sample-id",
+                    "sample_0",
+                    "--object-id",
+                    "000",
+                    "--output-dir",
+                    "outputs/pca",
+                ]
+            )
 
 
 if __name__ == "__main__":
