@@ -13,6 +13,14 @@ rgb_trajectory = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(rgb_trajectory)
 
 
+def load_demo_10():
+    demo_path = Path(__file__).parents[1] / "demo" / "10_rgb_trajectory.py"
+    demo_spec = importlib.util.spec_from_file_location("rgb_trajectory_demo", demo_path)
+    demo = importlib.util.module_from_spec(demo_spec)
+    demo_spec.loader.exec_module(demo)
+    return demo
+
+
 def frame_points(frame: int) -> np.ndarray:
     return np.array(
         [[frame, frame + 1, frame + 2], [frame + 3, frame + 4, frame + 5]],
@@ -91,6 +99,43 @@ class RgbTrajectoryTests(unittest.TestCase):
 
         self.assertEqual(path.name, "sample_0_object_000_trajectory.mp4")
         self.assertGreater(path.stat().st_size, 0)
+
+    def test_demo_defaults_to_24_fps(self) -> None:
+        demo = load_demo_10()
+
+        args = demo.parse_args(
+            [
+                "--dataset-root",
+                "data/train",
+                "--sample-id",
+                "sample_0",
+                "--object-id",
+                "000",
+                "--output-dir",
+                "outputs/trajectory",
+            ]
+        )
+
+        self.assertEqual(args.fps, 24)
+
+    def test_demo_rejects_nonpositive_fps(self) -> None:
+        demo = load_demo_10()
+
+        with self.assertRaisesRegex(ValueError, "fps"):
+            demo.main(
+                [
+                    "--dataset-root",
+                    "data/train",
+                    "--sample-id",
+                    "sample_0",
+                    "--object-id",
+                    "000",
+                    "--output-dir",
+                    "outputs/trajectory",
+                    "--fps",
+                    "0",
+                ]
+            )
 
 
 if __name__ == "__main__":
