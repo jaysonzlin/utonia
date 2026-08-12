@@ -59,8 +59,8 @@ Utonia's existing CUDA-compatible non-FlashAttention model configuration.
 After inference, upcast features through Utonia's pooling hierarchy and map
 them through `inverse` so every source point gets a feature.  Independently
 per object, apply the PCA-to-RGB mapping used by `demo/6_pca_object.py`:
-`torch.pca_lowrank(..., q=9, niter=5)`, a 60/40 blend of components 1--3 and
-4--6, then per-channel normalization and clamping.  Write those colors and
+`torch.pca_lowrank(..., q=min(9, N, D), niter=5)`, a 60/40 blend of components
+1--3 and 4--6, then per-channel normalization and clamping.  Write those colors and
 the original coordinates to `<output-dir>/<sample-id>_frame_<raw-frame>_<object-id>_pca.ply`.
 No viewer is opened and no raw-color PLY is written.
 

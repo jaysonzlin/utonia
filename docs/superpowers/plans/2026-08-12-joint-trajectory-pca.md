@@ -143,7 +143,7 @@ def build_object_input(coords):
 def pca_colors(features, brightness=1.2):
     if features.ndim != 2 or features.shape[1] < 6:
         raise ValueError("features must have shape [N, D] with D >= 6")
-    _, _, basis = torch.pca_lowrank(features, center=True, niter=5, q=9)
+    _, _, basis = torch.pca_lowrank(features, center=True, niter=5, q=min(9, *features.shape))
     projection = features @ basis
     projection = projection[:, :3] * 0.6 + projection[:, 3:6] * 0.4
     minimum = projection.min(dim=0, keepdim=True).values

@@ -2,6 +2,7 @@ import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import h5py
 import numpy as np
@@ -75,6 +76,52 @@ class LoadInitialPointCloudsTests(unittest.TestCase):
                 self.root, "sample-a", start_frame=1
             )
 
+    def test_rejects_a_missing_sample_before_looking_for_objects(self) -> None:
+        with self.assertRaisesRegex(FileNotFoundError, "missing sample directory"):
+            joint_trajectory_pca.load_initial_point_clouds(
+                self.root, "sample-a", start_frame=1
+            )
+
+    def test_rejects_path_like_sample_ids(self) -> None:
+        with self.assertRaisesRegex(ValueError, "sample_id must be a directory name"):
+            joint_trajectory_pca.load_initial_point_clouds(
+                self.root, "../sample-a", start_frame=1
+            )
+
+    def test_rejects_a_corrupt_hdf5_file_with_its_path(self) -> None:
+        path = self.root / "sample-a" / "objects" / "object-a" / "pc.hdf5"
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"not an HDF5 file")
+
+        with self.assertRaisesRegex(ValueError, r"invalid HDF5 point cloud.*pc\.hdf5"):
+            joint_trajectory_pca.load_initial_point_clouds(
+                self.root, "sample-a", start_frame=1
+            )
+
+    def test_rejects_a_point_cloud_group(self) -> None:
+        path = self.root / "sample-a" / "objects" / "object-a" / "pc.hdf5"
+        path.parent.mkdir(parents=True)
+        with h5py.File(path, "w") as source:
+            source.create_group("point_cloud")
+
+        with self.assertRaisesRegex(ValueError, "must be an HDF5 dataset"):
+            joint_trajectory_pca.load_initial_point_clouds(
+                self.root, "sample-a", start_frame=1
+            )
+
+    def test_rejects_non_numeric_point_coordinates(self) -> None:
+        path = self.root / "sample-a" / "objects" / "object-a" / "pc.hdf5"
+        path.parent.mkdir(parents=True)
+        with h5py.File(path, "w") as source:
+            source.create_dataset(
+                "point_cloud", data=np.full((1, 1, 2, 3), b"bad", dtype="S3")
+            )
+
+        with self.assertRaisesRegex(ValueError, "must contain numeric coordinates"):
+            joint_trajectory_pca.load_initial_point_clouds(
+                self.root, "sample-a", start_frame=1
+            )
+
 
 class JointTrajectoryPcaHelperTests(unittest.TestCase):
     def test_build_object_input_zero_fills_missing_modalities(self) -> None:
@@ -92,6 +139,14 @@ class JointTrajectoryPcaHelperTests(unittest.TestCase):
         colors = joint_trajectory_pca.pca_colors(features)
 
         self.assertEqual(tuple(colors.shape), (12, 3))
+        self.assertTrue(torch.all((0 <= colors) & (colors <= 1)))
+
+    def test_pca_colors_supports_the_smallest_valid_feature_matrix(self) -> None:
+        features = torch.arange(36, dtype=torch.float32).reshape(6, 6)
+
+        colors = joint_trajectory_pca.pca_colors(features)
+
+        self.assertEqual(tuple(colors.shape), (6, 3))
         self.assertTrue(torch.all((0 <= colors) & (colors <= 1)))
 
 
@@ -173,7 +228,8 @@ class JointTrajectoryPcaCliTests(unittest.TestCase):
         self.assertEqual(args.seed, 37)
         self.assertIsNone(args.checkpoint)
 
-    def test_main_rejects_a_non_cuda_host_before_importing_utonia(self) -> None:
+    @patch("torch.cuda.is_available", return_value=False)
+    def test_main_rejects_a_non_cuda_host_before_importing_utonia(self, _available) -> None:
         demo = self._load_demo()
 
         with self.assertRaisesRegex(RuntimeError, "CUDA"):

@@ -14,7 +14,14 @@ def load_initial_point_clouds(
     if start_frame < 1:
         raise ValueError("start_frame must be one-based and at least 1")
 
-    object_root = Path(dataset_root) / sample_id / "objects"
+    sample_path = Path(sample_id)
+    if sample_path.is_absolute() or sample_path.name != sample_id:
+        raise ValueError("sample_id must be a directory name without path separators")
+
+    sample_dir = Path(dataset_root) / sample_id
+    if not sample_dir.is_dir():
+        raise FileNotFoundError(f"missing sample directory: {sample_dir}")
+    object_root = sample_dir / "objects"
     if not object_root.is_dir():
         raise FileNotFoundError(f"missing objects directory: {object_root}")
 
@@ -27,21 +34,30 @@ def load_initial_point_clouds(
         path = object_dir / "pc.hdf5"
         if not path.is_file():
             raise FileNotFoundError(f"missing point cloud file: {path}")
-        with h5py.File(path, "r") as source:
-            if "point_cloud" not in source:
-                raise ValueError(f"{path}: missing point_cloud dataset")
-            cloud = source["point_cloud"]
-            if cloud.ndim != 4 or cloud.shape[1] != 1 or cloud.shape[-1] != 3:
-                raise ValueError(
-                    f"{path}: point_cloud must have shape [T, 1, N, 3]"
-                )
-            if start_frame > cloud.shape[0]:
-                raise ValueError(
-                    f"{path}: start frame {start_frame} exceeds {cloud.shape[0]} frames"
-                )
-            selected_clouds.append(
-                (object_dir.name, np.asarray(cloud[start_frame - 1, 0], dtype=np.float32))
-            )
+        try:
+            with h5py.File(path, "r") as source:
+                if "point_cloud" not in source:
+                    raise ValueError(f"{path}: missing point_cloud dataset")
+                cloud = source["point_cloud"]
+                if not isinstance(cloud, h5py.Dataset):
+                    raise ValueError(f"{path}: point_cloud must be an HDF5 dataset")
+                if cloud.ndim != 4 or cloud.shape[1] != 1 or cloud.shape[-1] != 3:
+                    raise ValueError(
+                        f"{path}: point_cloud must have shape [T, 1, N, 3]"
+                    )
+                if start_frame > cloud.shape[0]:
+                    raise ValueError(
+                        f"{path}: start frame {start_frame} exceeds {cloud.shape[0]} frames"
+                    )
+                try:
+                    coords = np.asarray(cloud[start_frame - 1, 0], dtype=np.float32)
+                except (TypeError, ValueError) as error:
+                    raise ValueError(
+                        f"{path}: point_cloud must contain numeric coordinates"
+                    ) from error
+        except OSError as error:
+            raise ValueError(f"invalid HDF5 point cloud: {path}") from error
+        selected_clouds.append((object_dir.name, coords))
     return selected_clouds
 
 
@@ -64,7 +80,9 @@ def pca_colors(features: torch.Tensor, brightness: float = 1.2) -> torch.Tensor:
     if features.shape[0] < 6:
         raise ValueError("at least 6 points are required for PCA visualization")
 
-    _, _, basis = torch.pca_lowrank(features, center=True, niter=5, q=9)
+    _, _, basis = torch.pca_lowrank(
+        features, center=True, niter=5, q=min(9, *features.shape)
+    )
     projection = features @ basis
     projection = projection[:, :3] * 0.6 + projection[:, 3:6] * 0.4
     minimum = projection.min(dim=0, keepdim=True).values
