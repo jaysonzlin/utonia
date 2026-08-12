@@ -128,20 +128,36 @@ def trajectory_bounds(trajectory: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return lower - padding, upper + padding
 
 
-def export_rgb_trajectory_mp4(
+def _validate_frame_colors(trajectory: np.ndarray, colors: np.ndarray) -> np.ndarray:
+    colors = np.asarray(colors, dtype=np.float32)
+    if colors.shape != trajectory.shape:
+        raise ValueError(f"colors must have shape {trajectory.shape}; got {colors.shape}")
+    if not np.isfinite(colors).all() or np.any((colors < 0.0) | (colors > 1.0)):
+        raise ValueError("colors must be finite and in [0, 1]")
+    return colors
+
+
+def export_colored_trajectory_mp4(
     output_dir: Path | str,
-    sample_id: str,
-    object_id: str,
+    filename: str,
+    title_prefix: str,
     trajectory: np.ndarray,
-    rgb: np.ndarray,
+    colors: np.ndarray,
     fps: int,
 ) -> Path:
-    """Render a fixed-camera RGB trajectory preview as an MP4 file."""
-    _require_basename(sample_id, "sample_id")
-    _require_basename(object_id, "object_id")
+    """Render one color array per trajectory frame with a fixed camera."""
+    if Path(filename).name != filename:
+        raise ValueError("filename must not contain path separators")
     if fps < 1:
         raise ValueError("fps must be a positive integer")
-    trajectory, rgb = _validate_trajectory_and_rgb(trajectory, rgb)
+    trajectory = np.asarray(trajectory, dtype=np.float32)
+    if trajectory.ndim != 3 or trajectory.shape[-1] != 3:
+        raise ValueError("trajectory must have shape [T, N, 3]")
+    if trajectory.shape[0] == 0 or trajectory.shape[1] == 0:
+        raise ValueError("trajectory must contain at least one frame and one point")
+    if not np.isfinite(trajectory).all():
+        raise ValueError("trajectory coordinates must be finite")
+    colors = _validate_frame_colors(trajectory, colors)
     lower, upper = trajectory_bounds(trajectory)
 
     try:
@@ -157,7 +173,7 @@ def export_rgb_trajectory_mp4(
 
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / f"{sample_id}_object_{object_id}_trajectory.mp4"
+    path = output_dir / filename
     figure = plt.figure(figsize=(6.4, 6.4), dpi=100, facecolor="white")
     axes = figure.add_subplot(111, projection="3d")
     writer = None
@@ -168,7 +184,7 @@ def export_rgb_trajectory_mp4(
                 coords[:, 0],
                 coords[:, 1],
                 coords[:, 2],
-                c=rgb,
+                c=colors[frame_index],
                 s=5,
                 depthshade=False,
                 linewidths=0,
@@ -181,7 +197,7 @@ def export_rgb_trajectory_mp4(
             axes.set_ylabel("y")
             axes.set_zlabel("z")
             axes.set_title(
-                f"{sample_id} · object {object_id} · frame {frame_index}", pad=18
+                f"{title_prefix} · frame {frame_index}", pad=18
             )
             axes.view_init(elev=20, azim=-55)
             figure.canvas.draw()
@@ -200,3 +216,25 @@ def export_rgb_trajectory_mp4(
             writer.release()
         plt.close(figure)
     return path
+
+
+def export_rgb_trajectory_mp4(
+    output_dir: Path | str,
+    sample_id: str,
+    object_id: str,
+    trajectory: np.ndarray,
+    rgb: np.ndarray,
+    fps: int,
+) -> Path:
+    """Render a fixed-camera static-RGB trajectory preview as an MP4 file."""
+    _require_basename(sample_id, "sample_id")
+    _require_basename(object_id, "object_id")
+    trajectory, rgb = _validate_trajectory_and_rgb(trajectory, rgb)
+    return export_colored_trajectory_mp4(
+        output_dir,
+        f"{sample_id}_object_{object_id}_trajectory.mp4",
+        f"{sample_id} · object {object_id}",
+        trajectory,
+        np.broadcast_to(rgb, trajectory.shape),
+        fps,
+    )

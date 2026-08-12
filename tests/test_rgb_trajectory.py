@@ -100,6 +100,28 @@ class RgbTrajectoryTests(unittest.TestCase):
         self.assertEqual(path.name, "sample_0_object_000_trajectory.mp4")
         self.assertGreater(path.stat().st_size, 0)
 
+    def test_colored_renderer_writes_frame_varying_colors_to_mp4(self) -> None:
+        trajectory = np.stack([frame_points(0), frame_points(1)])
+        colors = np.array(
+            [
+                [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+                [[0.0, 0.0, 1.0], [1.0, 1.0, 0.0]],
+            ],
+            dtype=np.float32,
+        )
+
+        path = rgb_trajectory.export_colored_trajectory_mp4(
+            self.root,
+            "sample_0_object_000_pca_trajectory.mp4",
+            "sample_0 · object 000",
+            trajectory,
+            colors,
+            fps=24,
+        )
+
+        self.assertEqual(path.name, "sample_0_object_000_pca_trajectory.mp4")
+        self.assertGreater(path.stat().st_size, 0)
+
     def test_demo_defaults_to_24_fps(self) -> None:
         demo = load_demo_10()
 
