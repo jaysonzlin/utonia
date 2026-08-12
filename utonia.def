@@ -1,5 +1,5 @@
 Bootstrap: docker
-From: nvidia/cuda:12.4.1-devel-ubuntu22.04
+From: nvidia/cuda:12.6.3-devel-ubuntu22.04
 
 %post
     export DEBIAN_FRONTEND=noninteractive
@@ -25,7 +25,7 @@ From: nvidia/cuda:12.4.1-devel-ubuntu22.04
     bash /tmp/miniforge.sh -b -p /opt/conda
     rm /tmp/miniforge.sh
 
-    export CONDA_OVERRIDE_CUDA=12.4
+    export CONDA_OVERRIDE_CUDA=12.6
     export CUDA_HOME=/usr/local/cuda
     export CUDACXX=/usr/local/cuda/bin/nvcc
     export PATH=/usr/local/cuda/bin:/opt/conda/bin:$PATH
@@ -43,15 +43,15 @@ From: nvidia/cuda:12.4.1-devel-ubuntu22.04
     $ENV_BIN/pip install --upgrade pip setuptools wheel
     $ENV_BIN/pip install \
         numpy==1.26.4 \
-        torch==2.5.0 \
-        torchvision==0.20.0 \
-        torchaudio==2.5.0 \
+        torch==2.4.1 \
+        torchvision==0.19.1 \
+        torchaudio==2.4.1 \
         --index-url https://download.pytorch.org/whl/cu124
     $ENV_BIN/pip install \
         torch-scatter \
-        -f https://data.pyg.org/whl/torch-2.5.0+cu124.html
+        -f https://data.pyg.org/whl/torch-2.4.0+cu124.html
     $ENV_BIN/pip install spconv-cu124
-    $ENV_BIN/pip install git+https://github.com/Dao-AILab/flash-attention.git
+    $ENV_BIN/pip install https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.0.8/flash_attn-2.6.3+cu126torch2.4-cp310-cp310-linux_x86_64.whl
 
     cat <<EOF > /tmp/requirements.txt
 scipy

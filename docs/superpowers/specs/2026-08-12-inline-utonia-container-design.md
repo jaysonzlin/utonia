@@ -7,16 +7,19 @@ the Utonia runtime without copying or reading `environment.yml`.
 
 ## Selected approach
 
-Keep the CUDA 12.4.1 Ubuntu 22.04 base image and Miniforge installation.  In
+Use the CUDA 12.6.3 Ubuntu 22.04 base image and keep the Miniforge installation. In
 `%post`, create `/opt/conda/envs/utonia` with Python 3.10 plus build tooling,
 then install every Utonia dependency explicitly:
 
-- Install PyTorch 2.5.0, torchvision 0.20.0, and torchaudio 2.5.0 from the
-  CUDA 12.4 PyTorch wheel index.
-- Install `torch-scatter` from the PyG wheel index matching PyTorch 2.5.0 and
-  CUDA 12.4, and install `spconv-cu124`.
-- Build FlashAttention from its Git repository after the CUDA-compatible
-  PyTorch wheel is present.
+- Set `CONDA_OVERRIDE_CUDA=12.6` and install PyTorch 2.4.1, torchvision
+  0.19.1, and torchaudio 2.4.1 from the CUDA 12.4 PyTorch wheel index. This
+  Torch ABI matches the requested FlashAttention wheel.
+- Install `torch-scatter` from the PyG PyTorch 2.4/CUDA 12.4 wheel index and
+  install `spconv-cu124`; CUDA 12.x compatibility permits these extension
+  wheels on the CUDA 12.6 base.
+- Install the requested precompiled FlashAttention wheel after the compatible
+  PyTorch stack is present:
+  `https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.0.8/flash_attn-2.6.3+cu126torch2.4-cp310-cp310-linux_x86_64.whl`.
 - Install Utonia's remaining Python runtime packages inline: NumPy 1.26.4,
   SciPy, Addict, timm, psutil, huggingface_hub, h5py, Open3D, matplotlib,
   OpenCV, camtools, trimesh, natsort, gradio, and einops.
@@ -40,7 +43,7 @@ the definition file.
 ## Validation
 
 Static validation must confirm that `utonia.def` has no `%files` section and
-does not reference `environment.yml`, that its inline dependencies include the
-CUDA 12.4 PyTorch stack plus Utonia's extension/runtime packages, and that the
+does not reference `environment.yml`, that it uses CUDA 12.6.3, the Torch 2.4
+stack, and the exact requested precompiled FlashAttention wheel, and that the
 existing bind-mount `%help` command remains intact. Build and GPU import
 validation will run on the remote Apptainer cluster.
