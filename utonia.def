@@ -1,9 +1,6 @@
 Bootstrap: docker
 From: nvidia/cuda:12.4.1-devel-ubuntu22.04
 
-%files
-    environment.yml /tmp/environment.yml
-
 %post
     export DEBIAN_FRONTEND=noninteractive
 
@@ -33,8 +30,48 @@ From: nvidia/cuda:12.4.1-devel-ubuntu22.04
     export CUDACXX=/usr/local/cuda/bin/nvcc
     export PATH=/usr/local/cuda/bin:/opt/conda/bin:$PATH
     export TORCH_CUDA_ARCH_LIST="7.0;8.0;9.0+PTX"
+    export FORCE_CUDA=1
 
-    /opt/conda/bin/mamba env create -y -p /opt/conda/envs/utonia -f /tmp/environment.yml
+    ENV_PATH=/opt/conda/envs/utonia
+    ENV_BIN=$ENV_PATH/bin
+    /opt/conda/bin/mamba create -y -p $ENV_PATH python=3.10 packaging ninja
+
+    export PATH=$ENV_BIN:$PATH
+    export CPATH=$ENV_PATH/include:$CPATH
+    export LIBRARY_PATH=$ENV_PATH/lib:$LIBRARY_PATH
+
+    $ENV_BIN/pip install --upgrade pip setuptools wheel
+    $ENV_BIN/pip install \
+        numpy==1.26.4 \
+        torch==2.5.0 \
+        torchvision==0.20.0 \
+        torchaudio==2.5.0 \
+        --index-url https://download.pytorch.org/whl/cu124
+    $ENV_BIN/pip install \
+        torch-scatter \
+        -f https://data.pyg.org/whl/torch-2.5.0+cu124.html
+    $ENV_BIN/pip install spconv-cu124
+    $ENV_BIN/pip install git+https://github.com/Dao-AILab/flash-attention.git
+
+    cat <<EOF > /tmp/requirements.txt
+scipy
+addict
+timm
+psutil
+huggingface_hub
+h5py
+open3d
+matplotlib
+opencv-python
+camtools
+trimesh
+natsort
+gradio
+einops
+EOF
+    $ENV_BIN/pip install -r /tmp/requirements.txt
+    rm /tmp/requirements.txt
+
     /opt/conda/bin/mamba clean -a -y
 
     # Force use of the host's NVIDIA driver when executed with --nv.
@@ -57,6 +94,16 @@ From: nvidia/cuda:12.4.1-devel-ubuntu22.04
     export SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
     export REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
     export CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
+
+%help
+    Build from this repository root:
+        apptainer build utonia.sif utonia.def
+
+    The source checkout is intentionally not included in the image. Bind it at
+    runtime, then run the trajectory PCA exporter from the mounted checkout:
+        apptainer exec --nv --bind "$PWD:/workspace" utonia.sif \
+          bash -lc 'cd /workspace && export PYTHONPATH=./ && \
+          python demo/9_pca_joint_trajectory.py --help'
 
 %runscript
     exec /bin/bash "$@"
